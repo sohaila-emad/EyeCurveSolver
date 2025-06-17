@@ -9,12 +9,16 @@ import RefMethod
 
 # Generate MOL data with more points to reduce overfitting
 print("Generating MOL solution with higher resolution...")
+mol_start_time = time.time()
 nx = 101  # Increased from 21 to 101 points
 x_data = torch.linspace(0, 1, nx).view(-1, 1)
 h_mol_np = RefMethod.run_mol_solution(nx=nx, tf=1.0)
+mol_end_time = time.time()
+mol_total_time = mol_end_time - mol_start_time
 h_data = torch.tensor(h_mol_np).view(-1, 1).float()
 
 print(f"Generated {nx} data points from MOL solution")
+print(f"MOL solution time: {mol_total_time:.4f} seconds")
 
 # PINN model definition
 a = 1.0**2 * 1.0 / 1.0
@@ -60,9 +64,8 @@ loss_data_hist = []
 loss_phys_hist = []
 loss_bc_hist = []
 loss_total_hist = []
-accuracy_hist = []
 
-print("\nStarting training...")
+print("\nStarting PINN training...")
 start_train = time.time()
 
 for epoch in range(1, epochs+1):
@@ -99,10 +102,6 @@ for epoch in range(1, epochs+1):
     loss.backward()
     optimizer.step()
 
-    # Compute accuracy wrt MOL data
-    with torch.no_grad():
-        acc = 1 - (torch.norm(model(x_data) - h_data) / torch.norm(h_data)).item()
-
     # Log at intervals
     if epoch % log_every == 0 or epoch == 1:
         epoch_time = time.time() - epoch_start
@@ -111,12 +110,12 @@ for epoch in range(1, epochs+1):
         loss_phys_hist.append(mse_phys.item())
         loss_bc_hist.append(loss_bc.item())
         loss_total_hist.append(loss.item())
-        accuracy_hist.append(acc)
         print(f"Epoch {epoch:4d} | L_data={mse_data:.2e} | L_phys={mse_phys:.2e} "
-              f"| L_bc={loss_bc:.2e} | L_tot={loss:.2e} | Acc={acc:.4f} | t={epoch_time:.3f}s")
+              f"| L_bc={loss_bc:.2e} | L_tot={loss:.2e} | t={epoch_time:.3f}s")
 
 end_train = time.time()
-print(f"\nTotal training time: {end_train - start_train:.2f} seconds")
+pinn_total_time = end_train - start_train
+print(f"\nTotal PINN training time: {pinn_total_time:.2f} seconds")
 
 # Final evaluation
 print("\nFinal evaluation:")
@@ -129,18 +128,25 @@ with torch.no_grad():
     print(f"Final MAE: {final_mae:.2e}")
     print(f"Max absolute error: {final_max_error:.2e}")
 
+# Calculate number of equations for each method
+mol_num_eqs = nx  # Number of spatial discretization points
+pinn_num_eqs = len(list(model.parameters()))  # Number of neural network parameters
+
+# Calculate actual parameter count for PINN
+pinn_params = sum(p.numel() for p in model.parameters())
+
 # -----------------------------
-# Plotting Results
+# Plotting Results (Accuracy plot removed)
 # -----------------------------
 epochs_logged = list(range(1, epochs+1, log_every))
 if epochs_logged[-1] != epochs:
     epochs_logged.append(epochs)
 
-# Create comprehensive plots
-fig = plt.figure(figsize=(15, 10))
+# Create plots without accuracy comparison
+fig = plt.figure(figsize=(12, 8))
 
 # Loss curves
-plt.subplot(2, 3, 1)
+plt.subplot(2, 2, 1)
 plt.plot(epochs_logged, loss_data_hist, label='Data Loss', linewidth=2)
 plt.plot(epochs_logged, loss_phys_hist, label='Physics Loss', linewidth=2)
 plt.plot(epochs_logged, loss_bc_hist, label='BC Loss', linewidth=2)
@@ -152,18 +158,8 @@ plt.legend()
 plt.title('Training Loss Breakdown')
 plt.grid(True, alpha=0.3)
 
-# Accuracy curve
-plt.subplot(2, 3, 2)
-plt.plot(epochs_logged, accuracy_hist, 'o-', label='Accuracy', linewidth=2, markersize=4)
-plt.xlabel('Epoch')
-plt.ylabel('Accuracy')
-plt.ylim(0, 1)
-plt.legend()
-plt.title('PINN Accuracy vs. MOL')
-plt.grid(True, alpha=0.3)
-
 # Solution comparison
-plt.subplot(2, 3, 3)
+plt.subplot(2, 2, 2)
 x_test = torch.linspace(0, 1, 200).view(-1, 1)
 with torch.no_grad():
     h_pred_test = model(x_test)
@@ -177,17 +173,86 @@ plt.title('PINN vs MOL Solution')
 plt.legend()
 plt.grid(True, alpha=0.3)
 
+# Error plot
+plt.subplot(2, 2, 3)
+with torch.no_grad():
+    error = torch.abs(model(x_data) - h_data)
+plt.plot(x_data.numpy(), error.numpy(), 'r-', linewidth=2)
+plt.xlabel('x')
+plt.ylabel('Absolute Error')
+plt.title('PINN Prediction Error')
+plt.grid(True, alpha=0.3)
+plt.yscale('log')
+
+# Training time per epoch
+plt.subplot(2, 2, 4)
+plt.plot(epochs_logged, times, 'g-o', linewidth=2, markersize=4)
+plt.xlabel('Epoch')
+plt.ylabel('Time per Epoch (s)')
+plt.title('Training Time per Epoch')
+plt.grid(True, alpha=0.3)
+
 plt.tight_layout()
 plt.show()
 
-# Summary statistics
-print("\n" + "="*50)
-print("TRAINING SUMMARY")
-print("="*50)
-print(f"Data points (MOL): {nx}")
-print(f"Collocation points: {N_colloc}")
-print(f"Training epochs: {epochs}")
-print(f"Final accuracy: {accuracy_hist[-1]:.4f}")
-print(f"Best accuracy: {max(accuracy_hist):.4f}")
-print(f"Average time per epoch: {np.mean(times):.3f}s")
-print("="*50)
+# -----------------------------
+# Comprehensive Comparison Table
+# -----------------------------
+print("\n" + "="*80)
+print("COMPREHENSIVE METHOD COMPARISON")
+print("="*80)
+
+# Create comparison table
+comparison_data = {
+    'Method': ['MOL (Method of Lines)', 'PINN (Physics-Informed NN)'],
+    'Total Time (s)': [f'{mol_total_time:.4f}', f'{pinn_total_time:.2f}'],
+    'Num Equations/Parameters': [mol_num_eqs, pinn_params],
+    'Time per Eq/Param (ms)': [f'{(mol_total_time/mol_num_eqs)*1000:.4f}', 
+                               f'{(pinn_total_time/pinn_params)*1000:.6f}'],
+    'Max Absolute Error': ['N/A (Reference)', f'{final_max_error:.2e}'],
+    'MSE': ['N/A (Reference)', f'{final_mse:.2e}'],
+    'MAE': ['N/A (Reference)', f'{final_mae:.2e}']
+}
+
+# Print formatted table
+print(f"{'Method':<25} {'Total Time (s)':<15} {'Num Eqs/Params':<15} {'Time/Eq (ms)':<15} {'Max Error':<12} {'MSE':<12} {'MAE':<12}")
+print("-" * 106)
+for i in range(len(comparison_data['Method'])):
+    print(f"{comparison_data['Method'][i]:<25} "
+          f"{comparison_data['Total Time (s)'][i]:<15} "
+          f"{comparison_data['Num Equations/Parameters'][i]:<15} "
+          f"{comparison_data['Time per Eq/Param (ms)'][i]:<15} "
+          f"{comparison_data['Max Absolute Error'][i]:<12} "
+          f"{comparison_data['MSE'][i]:<12} "
+          f"{comparison_data['MAE'][i]:<12}")
+
+print("\n" + "="*80)
+print("DETAILED METRICS")
+print("="*80)
+print(f"MOL Solution:")
+print(f"  - Spatial points: {nx}")
+print(f"  - Solution time: {mol_total_time:.4f} seconds")
+print(f"  - Time per spatial point: {(mol_total_time/nx)*1000:.4f} ms")
+
+print(f"\nPINN Solution:")
+print(f"  - Neural network parameters: {pinn_params}")
+print(f"  - Training epochs: {epochs}")
+print(f"  - Total training time: {pinn_total_time:.2f} seconds")
+print(f"  - Average time per epoch: {np.mean(times):.3f} seconds")
+print(f"  - Time per parameter: {(pinn_total_time/pinn_params)*1000:.6f} ms")
+print(f"  - Collocation points used: {N_colloc}")
+
+print(f"\nAccuracy Metrics (PINN vs MOL):")
+print(f"  - Final MSE: {final_mse:.2e}")
+print(f"  - Final MAE: {final_mae:.2e}")
+print(f"  - Maximum absolute error: {final_max_error:.2e}")
+print(f"  - Relative error (L2 norm): {(torch.norm(model(x_data) - h_data) / torch.norm(h_data)).item():.2e}")
+
+print("\n" + "="*80)
+print("COMPUTATIONAL EFFICIENCY SUMMARY")
+print("="*80)
+speedup_factor = pinn_total_time / mol_total_time
+print(f"Speed comparison: PINN is {speedup_factor:.1f}x {'slower' if speedup_factor > 1 else 'faster'} than MOL")
+print(f"MOL: {mol_total_time:.4f}s for {nx} points")
+print(f"PINN: {pinn_total_time:.2f}s for {pinn_params} parameters")
+print("="*80)
