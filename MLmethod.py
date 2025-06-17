@@ -11,7 +11,7 @@ import RefMethod
 print("Generating MOL solution with higher resolution...")
 nx = 101  # Increased from 21 to 101 points
 x_data = torch.linspace(0, 1, nx).view(-1, 1)
-h_mol_np = run_mol_solution(nx=nx, tf=1.0)
+h_mol_np = RefMethod.run_mol_solution(nx=nx, tf=1.0)
 h_data = torch.tensor(h_mol_np).view(-1, 1).float()
 
 print(f"Generated {nx} data points from MOL solution")
