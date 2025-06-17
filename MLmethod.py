@@ -4,6 +4,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 import time
+import pandas as pd
+
 # -----------------------------
 # Step 1: Define MOL function
 # -----------------------------
@@ -60,10 +62,16 @@ def run_mol_solution(nx=21, tf=1.0):
     return sol.y[:, -1]
 
 # -----------------------------
-# Step 2: Run MOL once
+# Step 2: Run MOL with timing
 # -----------------------------
+mol_start = time.time()
 h_mol_np = run_mol_solution()
-x = torch.linspace(0, 1, 21).view(-1, 1).float()
+mol_end = time.time()
+mol_exec_time = mol_end - mol_start
+mol_num_eqs = len(h_mol_np)
+mol_time_per_eq = mol_exec_time / mol_num_eqs
+
+x = torch.linspace(0, 1, mol_num_eqs).view(-1, 1).float()
 h_mol = torch.tensor(h_mol_np).view(-1, 1).float()
 
 # -----------------------------
@@ -86,15 +94,14 @@ model = Net()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
 # -----------------------------
-# Step 4: Train PINN vs MOL
+# Step 4: Train PINN with timing
 # -----------------------------
 def loss_fn(model, x, h_true):
     h_pred = model(x)
     return torch.mean((h_pred - h_true)**2)
 
 epochs = 2000
-start_time = time.time()  # Start timing
-
+pinn_start = time.time()
 for epoch in range(epochs):
     optimizer.zero_grad()
     loss = loss_fn(model, x, h_mol)
@@ -103,12 +110,44 @@ for epoch in range(epochs):
     if epoch % 200 == 0:
         acc = 1 - (torch.norm(model(x) - h_mol) / torch.norm(h_mol)).item()
         print(f"Epoch {epoch} | Loss = {loss.item():.6f} | Accuracy ≈ {acc:.4f}")
-
-end_time = time.time()  # End timing
-print(f"\nTraining completed in {end_time - start_time:.2f} seconds")
+pinn_end = time.time()
+pinn_exec_time = pinn_end - pinn_start
+pinn_time_per_eq = pinn_exec_time / mol_num_eqs
 
 # -----------------------------
-# Step 5: Plot Results
+# Step 5: Evaluate Errors
+# -----------------------------
+h_pred = model(x).detach().numpy().flatten()
+h_true = h_mol.numpy().flatten()
+max_error = np.max(np.abs(h_true - h_pred))
+error_at_x08 = np.abs(h_true[int(0.8 * (mol_num_eqs - 1))] - h_pred[int(0.8 * (mol_num_eqs - 1))])
+
+# -----------------------------
+# Step 6: Results Summary Table
+# -----------------------------
+df = pd.DataFrame([
+    {
+        "Method": "MOL",
+        "Exec. Time (s)": mol_exec_time,
+        "# Equations": mol_num_eqs,
+        "Time/Equation": mol_time_per_eq,
+        "Max Error": np.nan,
+        "Error at x=0.8": np.nan
+    },
+    {
+        "Method": "PINN",
+        "Exec. Time (s)": pinn_exec_time,
+        "# Equations": mol_num_eqs,
+        "Time/Equation": pinn_time_per_eq,
+        "Max Error": max_error,
+        "Error at x=0.8": error_at_x08
+    }
+])
+print("\nPerformance and Accuracy Summary:\n")
+print(df.to_string(index=False))
+
+# -----------------------------
+# Step 7: Plot Results
 # -----------------------------
 x_test = torch.linspace(0, 1, 100).view(-1, 1)
 h_pred_test = model(x_test).detach().numpy()
