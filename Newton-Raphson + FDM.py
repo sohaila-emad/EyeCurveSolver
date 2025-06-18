@@ -38,7 +38,7 @@ max_rel_error_history = []
 
 start_time = time.time()
 
-max_iterations = 150
+max_iterations = 20
 iteration_count = 0
 alpha = 0.5  # ✅ Damping factor
 
@@ -107,7 +107,7 @@ plt.plot(x, h, 'b-', linewidth=2, label='Numerical Solution')
 plt.plot(x_ref, h_ref, 'ro', markersize=8, label='Reference Points')
 plt.xlabel('x', fontsize=12)
 plt.ylabel('h(x)', fontsize=12)
-plt.title('Steady-State Solution with Error Tracking', fontsize=14)
+plt.title(' numerical sol vs reference sol curve', fontsize=14)
 plt.legend(fontsize=12)
 plt.grid(True)
 plt.show()
