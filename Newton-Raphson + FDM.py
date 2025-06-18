@@ -40,7 +40,7 @@ start_time = time.time()
 
 max_iterations = 20
 iteration_count = 0
-alpha = 0.5  # ✅ Damping factor
+alpha = 0.5  #  Damping factor
 
 for iteration in range(max_iterations):
     iteration_count += 1
@@ -72,14 +72,14 @@ for iteration in range(max_iterations):
 
     # Compute Jacobian numerically
     J = np.zeros((N, N))
-    delta = 1e-5  # ✅ More stable for finite differences
+    delta = 1e-5  #  More stable for finite differences
     for j in range(N):
         h_pert = h.copy()
         h_pert[j] += delta
         J[:, j] = (residual(h_pert) - F) / delta
 
     dh = np.linalg.solve(J, -F)
-    h += alpha * dh  # ✅ Damped update
+    h += alpha * dh  #  Damped update
 
 end_time = time.time()
 execution_time = end_time - start_time
