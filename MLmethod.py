@@ -136,66 +136,6 @@ pinn_num_eqs = len(list(model.parameters()))  # Number of neural network paramet
 pinn_params = sum(p.numel() for p in model.parameters())
 
 # -----------------------------
-# Plotting Results (Accuracy plot removed)
-# -----------------------------
-epochs_logged = list(range(1, epochs+1, log_every))
-if epochs_logged[-1] != epochs:
-    epochs_logged.append(epochs)
-
-# Create plots without accuracy comparison
-fig = plt.figure(figsize=(12, 8))
-
-# Loss curves
-plt.subplot(2, 2, 1)
-plt.plot(epochs_logged, loss_data_hist, label='Data Loss', linewidth=2)
-plt.plot(epochs_logged, loss_phys_hist, label='Physics Loss', linewidth=2)
-plt.plot(epochs_logged, loss_bc_hist, label='BC Loss', linewidth=2)
-plt.plot(epochs_logged, loss_total_hist, label='Total Loss', linewidth=3, alpha=0.8)
-plt.yscale('log')
-plt.xlabel('Epoch')
-plt.ylabel('Loss (log scale)')
-plt.legend()
-plt.title('Training Loss Breakdown')
-plt.grid(True, alpha=0.3)
-
-# Solution comparison
-plt.subplot(2, 2, 2)
-x_test = torch.linspace(0, 1, 200).view(-1, 1)
-with torch.no_grad():
-    h_pred_test = model(x_test)
-    h_pred_data = model(x_data)
-
-plt.plot(x_data.numpy(), h_data.numpy(), 'ro', label=f'MOL data ({nx} pts)', markersize=3)
-plt.plot(x_test.numpy(), h_pred_test.numpy(), 'b-', label='PINN prediction', linewidth=2)
-plt.xlabel('x')
-plt.ylabel('h(x)')
-plt.title('PINN vs MOL Solution')
-plt.legend()
-plt.grid(True, alpha=0.3)
-
-# Error plot
-plt.subplot(2, 2, 3)
-with torch.no_grad():
-    error = torch.abs(model(x_data) - h_data)
-plt.plot(x_data.numpy(), error.numpy(), 'r-', linewidth=2)
-plt.xlabel('x')
-plt.ylabel('Absolute Error')
-plt.title('PINN Prediction Error')
-plt.grid(True, alpha=0.3)
-plt.yscale('log')
-
-# Training time per epoch
-plt.subplot(2, 2, 4)
-plt.plot(epochs_logged, times, 'g-o', linewidth=2, markersize=4)
-plt.xlabel('Epoch')
-plt.ylabel('Time per Epoch (s)')
-plt.title('Training Time per Epoch')
-plt.grid(True, alpha=0.3)
-
-plt.tight_layout()
-plt.show()
-
-# -----------------------------
 # Comprehensive Comparison Table
 # -----------------------------
 print("\n" + "="*80)
@@ -256,3 +196,64 @@ print(f"Speed comparison: PINN is {speedup_factor:.1f}x {'slower' if speedup_fac
 print(f"MOL: {mol_total_time:.4f}s for {nx} points")
 print(f"PINN: {pinn_total_time:.2f}s for {pinn_params} parameters")
 print("="*80)
+
+# -----------------------------
+# Plotting Results (Accuracy plot removed)
+# -----------------------------
+epochs_logged = list(range(1, epochs+1, log_every))
+if epochs_logged[-1] != epochs:
+    epochs_logged.append(epochs)
+
+# Create plots without accuracy comparison
+fig = plt.figure(figsize=(12, 8))
+
+# Loss curves
+plt.subplot(2, 2, 1)
+plt.plot(epochs_logged, loss_data_hist, label='Data Loss', linewidth=2)
+plt.plot(epochs_logged, loss_phys_hist, label='Physics Loss', linewidth=2)
+plt.plot(epochs_logged, loss_bc_hist, label='BC Loss', linewidth=2)
+plt.plot(epochs_logged, loss_total_hist, label='Total Loss', linewidth=3, alpha=0.8)
+plt.yscale('log')
+plt.xlabel('Epoch')
+plt.ylabel('Loss (log scale)')
+plt.legend()
+plt.title('Training Loss Breakdown')
+plt.grid(True, alpha=0.3)
+
+# Solution comparison
+plt.subplot(2, 2, 2)
+x_test = torch.linspace(0, 1, 200).view(-1, 1)
+with torch.no_grad():
+    h_pred_test = model(x_test)
+    h_pred_data = model(x_data)
+
+plt.plot(x_data.numpy(), h_data.numpy(), 'ro', label=f'MOL data ({nx} pts)', markersize=3)
+plt.plot(x_test.numpy(), h_pred_test.numpy(), 'b-', label='PINN prediction', linewidth=2)
+plt.xlabel('x')
+plt.ylabel('h(x)')
+plt.title('PINN vs MOL Solution')
+plt.legend()
+plt.grid(True, alpha=0.3)
+
+# Error plot
+plt.subplot(2, 2, 3)
+with torch.no_grad():
+    error = torch.abs(model(x_data) - h_data)
+plt.plot(x_data.numpy(), error.numpy(), 'r-', linewidth=2)
+plt.xlabel('x')
+plt.ylabel('Absolute Error')
+plt.title('PINN Prediction Error')
+plt.grid(True, alpha=0.3)
+plt.yscale('log')
+
+# Training time per epoch
+plt.subplot(2, 2, 4)
+plt.plot(epochs_logged, times, 'g-o', linewidth=2, markersize=4)
+plt.xlabel('Epoch')
+plt.ylabel('Time per Epoch (s)')
+plt.title('Training Time per Epoch')
+plt.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+
