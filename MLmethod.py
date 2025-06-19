@@ -136,64 +136,51 @@ pinn_num_eqs = len(list(model.parameters()))  # Number of neural network paramet
 pinn_params = sum(p.numel() for p in model.parameters())
 
 # -----------------------------
-# Plotting Results (Accuracy plot removed)
+# h(x) Values Template at Specific Points
 # -----------------------------
-epochs_logged = list(range(1, epochs+1, log_every))
-if epochs_logged[-1] != epochs:
-    epochs_logged.append(epochs)
+print("\n" + "="*80)
+print("h(x) VALUES AT SPECIFIC POINTS")
+print("="*80)
 
-# Create plots without accuracy comparison
-fig = plt.figure(figsize=(12, 8))
+# Define evaluation points
+eval_points = torch.tensor([[0.0], [0.2], [0.4], [0.6], [0.8], [1.0]])
 
-# Loss curves
-plt.subplot(2, 2, 1)
-plt.plot(epochs_logged, loss_data_hist, label='Data Loss', linewidth=2)
-plt.plot(epochs_logged, loss_phys_hist, label='Physics Loss', linewidth=2)
-plt.plot(epochs_logged, loss_bc_hist, label='BC Loss', linewidth=2)
-plt.plot(epochs_logged, loss_total_hist, label='Total Loss', linewidth=3, alpha=0.8)
-plt.yscale('log')
-plt.xlabel('Epoch')
-plt.ylabel('Loss (log scale)')
-plt.legend()
-plt.title('Training Loss Breakdown')
-plt.grid(True, alpha=0.3)
+# Get MOL reference values at these points (interpolated)
+mol_h_values = []
+pinn_h_values = []
 
-# Solution comparison
-plt.subplot(2, 2, 2)
-x_test = torch.linspace(0, 1, 200).view(-1, 1)
 with torch.no_grad():
-    h_pred_test = model(x_test)
-    h_pred_data = model(x_data)
+    # Get PINN predictions at evaluation points
+    pinn_pred_eval = model(eval_points)
+    
+    # Interpolate MOL values at evaluation points
+    x_data_np = x_data.numpy().flatten()
+    h_data_np = h_data.numpy().flatten()
+    
+    for point in eval_points.numpy().flatten():
+        # Find closest indices for interpolation
+        if point in x_data_np:
+            # Exact match
+            idx = np.where(x_data_np == point)[0][0]
+            mol_value = h_data_np[idx]
+        else:
+            # Linear interpolation
+            mol_value = np.interp(point, x_data_np, h_data_np)
+        mol_h_values.append(mol_value)
+    
+    pinn_h_values = pinn_pred_eval.numpy().flatten()
 
-plt.plot(x_data.numpy(), h_data.numpy(), 'ro', label=f'MOL data ({nx} pts)', markersize=3)
-plt.plot(x_test.numpy(), h_pred_test.numpy(), 'b-', label='PINN prediction', linewidth=2)
-plt.xlabel('x')
-plt.ylabel('h(x)')
-plt.title('PINN vs MOL Solution')
-plt.legend()
-plt.grid(True, alpha=0.3)
+# Create template table
+print(f"{'x':<6} {'MOL h(x)':<12} {'PINN h(x)':<12} {'Absolute Error':<15} {'Relative Error (%)':<18}")
+print("-" * 65)
 
-# Error plot
-plt.subplot(2, 2, 3)
-with torch.no_grad():
-    error = torch.abs(model(x_data) - h_data)
-plt.plot(x_data.numpy(), error.numpy(), 'r-', linewidth=2)
-plt.xlabel('x')
-plt.ylabel('Absolute Error')
-plt.title('PINN Prediction Error')
-plt.grid(True, alpha=0.3)
-plt.yscale('log')
-
-# Training time per epoch
-plt.subplot(2, 2, 4)
-plt.plot(epochs_logged, times, 'g-o', linewidth=2, markersize=4)
-plt.xlabel('Epoch')
-plt.ylabel('Time per Epoch (s)')
-plt.title('Training Time per Epoch')
-plt.grid(True, alpha=0.3)
-
-plt.tight_layout()
-plt.show()
+for i, x_val in enumerate([0.0, 0.2, 0.4, 0.6, 0.8, 1.0]):
+    mol_val = mol_h_values[i]
+    pinn_val = pinn_h_values[i]
+    abs_error = abs(pinn_val - mol_val)
+    rel_error = (abs_error / abs(mol_val)) * 100 if mol_val != 0 else 0
+    
+    print(f"{x_val:<6.1f} {mol_val:<12.6f} {pinn_val:<12.6f} {abs_error:<15.6f} {rel_error:<18.4f}")
 
 # -----------------------------
 # Comprehensive Comparison Table
@@ -256,3 +243,63 @@ print(f"Speed comparison: PINN is {speedup_factor:.1f}x {'slower' if speedup_fac
 print(f"MOL: {mol_total_time:.4f}s for {nx} points")
 print(f"PINN: {pinn_total_time:.2f}s for {pinn_params} parameters")
 print("="*80)
+
+# -----------------------------
+# Plotting Results (Accuracy plot removed)
+# -----------------------------
+epochs_logged = list(range(1, epochs+1, log_every))
+if epochs_logged[-1] != epochs:
+    epochs_logged.append(epochs)
+
+# Create plots without accuracy comparison
+fig = plt.figure(figsize=(12, 8))
+
+# Loss curves
+plt.subplot(2, 2, 1)
+plt.plot(epochs_logged, loss_data_hist, label='Data Loss', linewidth=2)
+plt.plot(epochs_logged, loss_phys_hist, label='Physics Loss', linewidth=2)
+plt.plot(epochs_logged, loss_bc_hist, label='BC Loss', linewidth=2)
+plt.plot(epochs_logged, loss_total_hist, label='Total Loss', linewidth=3, alpha=0.8)
+plt.yscale('log')
+plt.xlabel('Epoch')
+plt.ylabel('Loss (log scale)')
+plt.legend()
+plt.title('Training Loss Breakdown')
+plt.grid(True, alpha=0.3)
+
+# Solution comparison
+plt.subplot(2, 2, 2)
+x_test = torch.linspace(0, 1, 200).view(-1, 1)
+with torch.no_grad():
+    h_pred_test = model(x_test)
+    h_pred_data = model(x_data)
+
+plt.plot(x_data.numpy(), h_data.numpy(), 'ro', label=f'MOL data ({nx} pts)', markersize=3)
+plt.plot(x_test.numpy(), h_pred_test.numpy(), 'b-', label='PINN prediction', linewidth=2)
+plt.xlabel('x')
+plt.ylabel('h(x)')
+plt.title('PINN vs MOL Solution')
+plt.legend()
+plt.grid(True, alpha=0.3)
+
+# Error plot
+plt.subplot(2, 2, 3)
+with torch.no_grad():
+    error = torch.abs(model(x_data) - h_data)
+plt.plot(x_data.numpy(), error.numpy(), 'r-', linewidth=2)
+plt.xlabel('x')
+plt.ylabel('Absolute Error')
+plt.title('PINN Prediction Error')
+plt.grid(True, alpha=0.3)
+plt.yscale('log')
+
+# Training time per epoch
+plt.subplot(2, 2, 4)
+plt.plot(epochs_logged, times, 'g-o', linewidth=2, markersize=4)
+plt.xlabel('Epoch')
+plt.ylabel('Time per Epoch (s)')
+plt.title('Training Time per Epoch')
+plt.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()

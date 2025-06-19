@@ -83,6 +83,34 @@ print(f"{'t':>5} {'u(0)':>10} {'u(0.25)':>10} {'u(0.5)':>10} {'u(0.75)':>10} {'u
 for i in range(nout):
     print(f"{tm[i]:5.2f} {U[i, 0]:10.5f} {U[i, 5]:10.5f} {U[i, 10]:10.5f} {U[i, 15]:10.5f} {U[i, 20]:10.5f}")
 
+def run_mol_solution(nx=21, tf=1.0):
+    # Local Parameters
+    R = 1.0
+    k = 1.0
+    P = 1.0
+    T = 1.0
+    a = R**2 * k / T
+    b = R * P / T
+    xl = 1.0
+    dx = xl / (nx - 1)
+    xg = np.linspace(0, xl, nx)
+    u0 = np.full(nx, 0.25)
+
+    # Derivative functions are already globally defined (they are accessible)
+
+    def corneal_1(t, u):
+        u[-1] = 0
+        ux = dss006(0, xl, nx, u)
+        ux[0] = 0
+        uxx = dss046(0, xl, nx, u, ux, nl=2, nu=1)
+        sr = np.sqrt(1 + ux**2)
+        ut = uxx / sr - a * u + b / sr
+        ut[-1] = 0
+        return ut
+
+    sol = solve_ivp(corneal_1, [0, tf], u0, t_eval=[tf], method='LSODA', rtol=1e-8, atol=1e-8)
+    return sol.y[:, -1]
+
 # Plot
 plt.figure(figsize=(8, 5))
 for i in range(nout):
