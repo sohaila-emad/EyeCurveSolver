@@ -136,6 +136,53 @@ pinn_num_eqs = len(list(model.parameters()))  # Number of neural network paramet
 pinn_params = sum(p.numel() for p in model.parameters())
 
 # -----------------------------
+# h(x) Values Template at Specific Points
+# -----------------------------
+print("\n" + "="*80)
+print("h(x) VALUES AT SPECIFIC POINTS")
+print("="*80)
+
+# Define evaluation points
+eval_points = torch.tensor([[0.0], [0.2], [0.4], [0.6], [0.8], [1.0]])
+
+# Get MOL reference values at these points (interpolated)
+mol_h_values = []
+pinn_h_values = []
+
+with torch.no_grad():
+    # Get PINN predictions at evaluation points
+    pinn_pred_eval = model(eval_points)
+    
+    # Interpolate MOL values at evaluation points
+    x_data_np = x_data.numpy().flatten()
+    h_data_np = h_data.numpy().flatten()
+    
+    for point in eval_points.numpy().flatten():
+        # Find closest indices for interpolation
+        if point in x_data_np:
+            # Exact match
+            idx = np.where(x_data_np == point)[0][0]
+            mol_value = h_data_np[idx]
+        else:
+            # Linear interpolation
+            mol_value = np.interp(point, x_data_np, h_data_np)
+        mol_h_values.append(mol_value)
+    
+    pinn_h_values = pinn_pred_eval.numpy().flatten()
+
+# Create template table
+print(f"{'x':<6} {'MOL h(x)':<12} {'PINN h(x)':<12} {'Absolute Error':<15} {'Relative Error (%)':<18}")
+print("-" * 65)
+
+for i, x_val in enumerate([0.0, 0.2, 0.4, 0.6, 0.8, 1.0]):
+    mol_val = mol_h_values[i]
+    pinn_val = pinn_h_values[i]
+    abs_error = abs(pinn_val - mol_val)
+    rel_error = (abs_error / abs(mol_val)) * 100 if mol_val != 0 else 0
+    
+    print(f"{x_val:<6.1f} {mol_val:<12.6f} {pinn_val:<12.6f} {abs_error:<15.6f} {rel_error:<18.4f}")
+
+# -----------------------------
 # Comprehensive Comparison Table
 # -----------------------------
 print("\n" + "="*80)
@@ -256,4 +303,3 @@ plt.grid(True, alpha=0.3)
 
 plt.tight_layout()
 plt.show()
-
