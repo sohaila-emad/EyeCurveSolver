@@ -38,13 +38,24 @@ max_rel_error_history = []
 
 start_time = time.time()
 
-max_iterations = 20
+max_iterations = 50
 iteration_count = 0
-alpha = 0.5  #  Damping factor
+alpha = 0.8  # Damping factor
+converged_at = None  # Track where convergence happens
+stabilized_at = None  # Track where solution stabilizes
+tolerance = 1e-8  # Tolerance for stabilization
+
+h_old = h.copy()
 
 for iteration in range(max_iterations):
     iteration_count += 1
     F = residual(h)
+
+    # Check for solution stabilization (before updating h)
+    if iteration > 1 and np.linalg.norm(h - h_old, np.inf) < tolerance and stabilized_at is None:
+        stabilized_at = iteration_count - 1
+        print(f"\nSolution stabilized at iteration: {stabilized_at}")
+        # Don't break here; allow convergence to still be checked.
 
     # Calculate errors at reference points
     idx_ref = [np.argmin(np.abs(x - xi)) for xi in x_ref]
@@ -67,19 +78,21 @@ for iteration in range(max_iterations):
         print(f"{xi:.2f}\t{hi:.6f}\t{aerr:.6f}\t{rel_error_str}")
 
     if np.linalg.norm(F, np.inf) < 1e-8:
-        print("\nSolution converged!")
+        converged_at = iteration_count
+        print(f"\nSolution converged at iteration: {converged_at}")
         break
 
     # Compute Jacobian numerically
     J = np.zeros((N, N))
-    delta = 1e-5  #  More stable for finite differences
+    delta = 1e-5
     for j in range(N):
         h_pert = h.copy()
         h_pert[j] += delta
         J[:, j] = (residual(h_pert) - F) / delta
 
     dh = np.linalg.solve(J, -F)
-    h += alpha * dh  #  Damped update
+    h_old = h.copy()
+    h += alpha * dh  # Damped update
 
 end_time = time.time()
 execution_time = end_time - start_time
@@ -101,13 +114,21 @@ print(f"Maximum Relative Error: {final_max_rel:.6f}")
 print(f"\nNumber of iterations: {iteration_count}")
 print(f"Execution time: {execution_time:.6f} seconds")
 
+# Updated status print logic
+if converged_at is not None:
+    print(f"Solution converged at iteration: {converged_at}")
+if stabilized_at is not None:
+    print(f"Solution stabilized at iteration: {stabilized_at}")
+if converged_at is None and stabilized_at is None:
+    print("Solution did not converge or stabilize within the maximum number of iterations.")
+
 # Plotting
 plt.figure(figsize=(10, 6))
 plt.plot(x, h, 'b-', linewidth=2, label='Numerical Solution')
 plt.plot(x_ref, h_ref, 'ro', markersize=8, label='Reference Points')
 plt.xlabel('x', fontsize=12)
 plt.ylabel('h(x)', fontsize=12)
-plt.title(' numerical sol vs reference sol curve', fontsize=14)
+plt.title('Numerical vs Reference Solution', fontsize=14)
 plt.legend(fontsize=12)
 plt.grid(True)
 plt.show()
