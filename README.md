@@ -208,7 +208,7 @@ If you use this code in research, please cite:
   author = {Sohaila Emad},
   title = {EyeCurveSolver: Multi-Method Numerical Analysis for Corneal Curvature Equations},
   url = {https://github.com/sohaila-emad/EyeCurveSolver},
-  year = {2024}
+  year = {2025}
 }
 ```
 
