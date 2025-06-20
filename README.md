@@ -155,7 +155,7 @@ EyeCurveSolver/
 | Method | Typical Time | Accuracy | Parameters | Complexity |
 |--------|-------------|----------|------------|------------|
 | MOL | ~0.1s | Reference | 21-101 points | Medium |
-| PINN | ~20-400s | High | ~2500 params | High |
+| PINN | ~20-400s | High | ~5000 params | High |
 | Newton-Raphson | ~0.01s | High | 21 points | Low |
 | Shooting+RK4 | ~0.01s | High | Adaptive | Low |
 
