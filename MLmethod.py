@@ -114,10 +114,53 @@ for epoch in range(1, epochs+1):
               f"| L_bc={loss_bc:.2e} | L_tot={loss:.2e} | t={epoch_time:.3f}s")
 
 end_train = time.time()
-pinn_total_time = end_train - start_train
-print(f"\nTotal PINN training time: {pinn_total_time:.2f} seconds")
+pinn_training_time = end_train - start_train
+print(f"\nTotal PINN training time: {pinn_training_time:.2f} seconds")
 
-# Final evaluation
+# ===============================================
+# EXECUTION TIME MEASUREMENT (NO TRAINING)
+# ===============================================
+
+print("\n" + "="*60)
+print("MEASURING EXECUTION TIME ONLY (NO TRAINING)")
+print("="*60)
+
+# Switch model to evaluation mode
+model.eval()
+
+# Measure PINN execution time for prediction only
+print("\nMeasuring PINN execution time...")
+pinn_exec_start = time.time()
+with torch.no_grad():
+    # Single forward pass through all data points
+    pinn_prediction = model(x_data)
+pinn_exec_end = time.time()
+pinn_execution_time = pinn_exec_end - pinn_exec_start
+
+print(f"PINN execution time (inference only): {pinn_execution_time:.6f} seconds")
+
+# Measure execution time for multiple evaluations to get better statistics
+n_runs = 100
+print(f"\nMeasuring PINN execution time over {n_runs} runs...")
+exec_times = []
+
+for i in range(n_runs):
+    start = time.time()
+    with torch.no_grad():
+        _ = model(x_data)
+    end = time.time()
+    exec_times.append(end - start)
+
+avg_exec_time = np.mean(exec_times)
+std_exec_time = np.std(exec_times)
+min_exec_time = np.min(exec_times)
+max_exec_time = np.max(exec_times)
+
+print(f"Average execution time: {avg_exec_time:.6f} ± {std_exec_time:.6f} seconds")
+print(f"Min execution time: {min_exec_time:.6f} seconds")
+print(f"Max execution time: {max_exec_time:.6f} seconds")
+
+# Final evaluation (for accuracy metrics)
 print("\nFinal evaluation:")
 with torch.no_grad():
     final_pred = model(x_data)
@@ -130,10 +173,66 @@ with torch.no_grad():
 
 # Calculate number of equations for each method
 mol_num_eqs = nx  # Number of spatial discretization points
-pinn_num_eqs = len(list(model.parameters()))  # Number of neural network parameters
-
-# Calculate actual parameter count for PINN
 pinn_params = sum(p.numel() for p in model.parameters())
+
+# -----------------------------
+# EXECUTION TIME COMPARISON TABLE
+# -----------------------------
+print("\n" + "="*80)
+print("EXECUTION TIME COMPARISON (NO TRAINING)")
+print("="*80)
+
+# Create execution comparison table
+exec_comparison_data = {
+    'Method': ['MOL (Method of Lines)', 'PINN (Inference Only)'],
+    'Execution Time (s)': [f'{mol_total_time:.6f}', f'{avg_exec_time:.6f}'],
+    'Num Points/Parameters': [mol_num_eqs, pinn_params],
+    'Time per Point/Param (μs)': [f'{(mol_total_time/mol_num_eqs)*1e6:.2f}', 
+                                  f'{(avg_exec_time/pinn_params)*1e6:.4f}'],
+    'Speedup Factor': ['1.0x (Reference)', f'{mol_total_time/avg_exec_time:.1f}x']
+}
+
+# Print formatted table
+print(f"{'Method':<25} {'Exec Time (s)':<15} {'Num Points/Params':<18} {'Time/Point (μs)':<17} {'Speedup':<10}")
+print("-" * 85)
+for i in range(len(exec_comparison_data['Method'])):
+    print(f"{exec_comparison_data['Method'][i]:<25} "
+          f"{exec_comparison_data['Execution Time (s)'][i]:<15} "
+          f"{exec_comparison_data['Num Points/Parameters'][i]:<18} "
+          f"{exec_comparison_data['Time per Point/Param (μs)'][i]:<17} "
+          f"{exec_comparison_data['Speedup Factor'][i]:<10}")
+
+print("\n" + "="*80)
+print("EXECUTION TIME SUMMARY")
+print("="*80)
+speedup_factor = mol_total_time / avg_exec_time
+print(f"MOL execution time: {mol_total_time:.6f} seconds")
+print(f"PINN execution time: {avg_exec_time:.6f} ± {std_exec_time:.6f} seconds")
+print(f"Speedup factor: PINN is {speedup_factor:.1f}x {'faster' if speedup_factor > 1 else 'slower'} than MOL")
+print(f"PINN processes {nx} points in {avg_exec_time*1000:.3f} milliseconds")
+print(f"Time per prediction: {(avg_exec_time/nx)*1e6:.2f} microseconds per point")
+
+print("\n" + "="*80)
+print("DETAILED EXECUTION METRICS")
+print("="*80)
+print(f"MOL Solution:")
+print(f"  - Spatial points: {nx}")
+print(f"  - Total execution time: {mol_total_time:.6f} seconds")
+print(f"  - Time per spatial point: {(mol_total_time/nx)*1e6:.2f} microseconds")
+
+print(f"\nPINN Inference:")
+print(f"  - Neural network parameters: {pinn_params}")
+print(f"  - Input points: {nx}")
+print(f"  - Average execution time: {avg_exec_time:.6f} seconds")
+print(f"  - Standard deviation: {std_exec_time:.6f} seconds")
+print(f"  - Time per input point: {(avg_exec_time/nx)*1e6:.2f} microseconds")
+print(f"  - Time per parameter: {(avg_exec_time/pinn_params)*1e6:.4f} microseconds")
+
+print(f"\nAccuracy Metrics (PINN vs MOL):")
+print(f"  - Final MSE: {final_mse:.2e}")
+print(f"  - Final MAE: {final_mae:.2e}")
+print(f"  - Maximum absolute error: {final_max_error:.2e}")
+print("="*80)
 
 # -----------------------------
 # h(x) Values Template at Specific Points
@@ -149,26 +248,30 @@ eval_points = torch.tensor([[0.0], [0.2], [0.4], [0.6], [0.8], [1.0]])
 mol_h_values = []
 pinn_h_values = []
 
+# Measure execution time for specific point evaluation
+eval_exec_start = time.time()
 with torch.no_grad():
     # Get PINN predictions at evaluation points
     pinn_pred_eval = model(eval_points)
-    
-    # Interpolate MOL values at evaluation points
-    x_data_np = x_data.numpy().flatten()
-    h_data_np = h_data.numpy().flatten()
-    
-    for point in eval_points.numpy().flatten():
-        # Find closest indices for interpolation
-        if point in x_data_np:
-            # Exact match
-            idx = np.where(x_data_np == point)[0][0]
-            mol_value = h_data_np[idx]
-        else:
-            # Linear interpolation
-            mol_value = np.interp(point, x_data_np, h_data_np)
-        mol_h_values.append(mol_value)
-    
-    pinn_h_values = pinn_pred_eval.numpy().flatten()
+eval_exec_end = time.time()
+eval_exec_time = eval_exec_end - eval_exec_start
+
+# Interpolate MOL values at evaluation points
+x_data_np = x_data.numpy().flatten()
+h_data_np = h_data.numpy().flatten()
+
+for point in eval_points.numpy().flatten():
+    # Find closest indices for interpolation
+    if point in x_data_np:
+        # Exact match
+        idx = np.where(x_data_np == point)[0][0]
+        mol_value = h_data_np[idx]
+    else:
+        # Linear interpolation
+        mol_value = np.interp(point, x_data_np, h_data_np)
+    mol_h_values.append(mol_value)
+
+pinn_h_values = pinn_pred_eval.numpy().flatten()
 
 # Create template table
 print(f"{'x':<6} {'MOL h(x)':<12} {'PINN h(x)':<12} {'Absolute Error':<15} {'Relative Error (%)':<18}")
@@ -182,89 +285,31 @@ for i, x_val in enumerate([0.0, 0.2, 0.4, 0.6, 0.8, 1.0]):
     
     print(f"{x_val:<6.1f} {mol_val:<12.6f} {pinn_val:<12.6f} {abs_error:<15.6f} {rel_error:<18.4f}")
 
-# -----------------------------
-# Comprehensive Comparison Table
-# -----------------------------
-print("\n" + "="*80)
-print("COMPREHENSIVE METHOD COMPARISON")
-print("="*80)
-
-# Create comparison table
-comparison_data = {
-    'Method': ['MOL (Method of Lines)', 'PINN (Physics-Informed NN)'],
-    'Total Time (s)': [f'{mol_total_time:.4f}', f'{pinn_total_time:.2f}'],
-    'Num Equations/Parameters': [mol_num_eqs, pinn_params],
-    'Time per Eq/Param (ms)': [f'{(mol_total_time/mol_num_eqs)*1000:.4f}', 
-                               f'{(pinn_total_time/pinn_params)*1000:.6f}'],
-    'Max Absolute Error': ['N/A (Reference)', f'{final_max_error:.2e}'],
-    'MSE': ['N/A (Reference)', f'{final_mse:.2e}'],
-    'MAE': ['N/A (Reference)', f'{final_mae:.2e}']
-}
-
-# Print formatted table
-print(f"{'Method':<25} {'Total Time (s)':<15} {'Num Eqs/Params':<15} {'Time/Eq (ms)':<15} {'Max Error':<12} {'MSE':<12} {'MAE':<12}")
-print("-" * 106)
-for i in range(len(comparison_data['Method'])):
-    print(f"{comparison_data['Method'][i]:<25} "
-          f"{comparison_data['Total Time (s)'][i]:<15} "
-          f"{comparison_data['Num Equations/Parameters'][i]:<15} "
-          f"{comparison_data['Time per Eq/Param (ms)'][i]:<15} "
-          f"{comparison_data['Max Absolute Error'][i]:<12} "
-          f"{comparison_data['MSE'][i]:<12} "
-          f"{comparison_data['MAE'][i]:<12}")
-
-print("\n" + "="*80)
-print("DETAILED METRICS")
-print("="*80)
-print(f"MOL Solution:")
-print(f"  - Spatial points: {nx}")
-print(f"  - Solution time: {mol_total_time:.4f} seconds")
-print(f"  - Time per spatial point: {(mol_total_time/nx)*1000:.4f} ms")
-
-print(f"\nPINN Solution:")
-print(f"  - Neural network parameters: {pinn_params}")
-print(f"  - Training epochs: {epochs}")
-print(f"  - Total training time: {pinn_total_time:.2f} seconds")
-print(f"  - Average time per epoch: {np.mean(times):.3f} seconds")
-print(f"  - Time per parameter: {(pinn_total_time/pinn_params)*1000:.6f} ms")
-print(f"  - Collocation points used: {N_colloc}")
-
-print(f"\nAccuracy Metrics (PINN vs MOL):")
-print(f"  - Final MSE: {final_mse:.2e}")
-print(f"  - Final MAE: {final_mae:.2e}")
-print(f"  - Maximum absolute error: {final_max_error:.2e}")
-print(f"  - Relative error (L2 norm): {(torch.norm(model(x_data) - h_data) / torch.norm(h_data)).item():.2e}")
-
-print("\n" + "="*80)
-print("COMPUTATIONAL EFFICIENCY SUMMARY")
-print("="*80)
-speedup_factor = pinn_total_time / mol_total_time
-print(f"Speed comparison: PINN is {speedup_factor:.1f}x {'slower' if speedup_factor > 1 else 'faster'} than MOL")
-print(f"MOL: {mol_total_time:.4f}s for {nx} points")
-print(f"PINN: {pinn_total_time:.2f}s for {pinn_params} parameters")
-print("="*80)
+print(f"\nExecution time for 6 specific points: {eval_exec_time:.6f} seconds")
+print(f"Time per specific point evaluation: {(eval_exec_time/6)*1e6:.2f} microseconds")
 
 # -----------------------------
-# Plotting Results (Accuracy plot removed)
+# Plotting Results (Execution time focused)
 # -----------------------------
 epochs_logged = list(range(1, epochs+1, log_every))
 if epochs_logged[-1] != epochs:
     epochs_logged.append(epochs)
 
-# Create plots without accuracy comparison
+# Create plots focused on execution performance
 fig = plt.figure(figsize=(12, 8))
 
-# Loss curves
+# Execution time comparison
 plt.subplot(2, 2, 1)
-plt.plot(epochs_logged, loss_data_hist, label='Data Loss', linewidth=2)
-plt.plot(epochs_logged, loss_phys_hist, label='Physics Loss', linewidth=2)
-plt.plot(epochs_logged, loss_bc_hist, label='BC Loss', linewidth=2)
-plt.plot(epochs_logged, loss_total_hist, label='Total Loss', linewidth=3, alpha=0.8)
+methods = ['MOL', 'PINN\n(Inference)']
+exec_times_plot = [mol_total_time, avg_exec_time]
+colors = ['blue', 'red']
+bars = plt.bar(methods, exec_times_plot, color=colors, alpha=0.7)
+plt.ylabel('Execution Time (s)')
+plt.title('Execution Time Comparison')
 plt.yscale('log')
-plt.xlabel('Epoch')
-plt.ylabel('Loss (log scale)')
-plt.legend()
-plt.title('Training Loss Breakdown')
+for i, (bar, time_val) in enumerate(zip(bars, exec_times_plot)):
+    plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() * 1.1, 
+             f'{time_val:.6f}s', ha='center', va='bottom')
 plt.grid(True, alpha=0.3)
 
 # Solution comparison
@@ -282,8 +327,18 @@ plt.title('PINN vs MOL Solution')
 plt.legend()
 plt.grid(True, alpha=0.3)
 
-# Error plot
+# Execution time statistics
 plt.subplot(2, 2, 3)
+plt.hist(exec_times, bins=20, alpha=0.7, color='green', edgecolor='black')
+plt.axvline(avg_exec_time, color='red', linestyle='--', linewidth=2, label=f'Mean: {avg_exec_time:.6f}s')
+plt.xlabel('Execution Time (s)')
+plt.ylabel('Frequency')
+plt.title(f'PINN Execution Time Distribution ({n_runs} runs)')
+plt.legend()
+plt.grid(True, alpha=0.3)
+
+# Error plot
+plt.subplot(2, 2, 4)
 with torch.no_grad():
     error = torch.abs(model(x_data) - h_data)
 plt.plot(x_data.numpy(), error.numpy(), 'r-', linewidth=2)
@@ -292,14 +347,6 @@ plt.ylabel('Absolute Error')
 plt.title('PINN Prediction Error')
 plt.grid(True, alpha=0.3)
 plt.yscale('log')
-
-# Training time per epoch
-plt.subplot(2, 2, 4)
-plt.plot(epochs_logged, times, 'g-o', linewidth=2, markersize=4)
-plt.xlabel('Epoch')
-plt.ylabel('Time per Epoch (s)')
-plt.title('Training Time per Epoch')
-plt.grid(True, alpha=0.3)
 
 plt.tight_layout()
 plt.show()
